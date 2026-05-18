@@ -120,6 +120,11 @@ h2 {
   gap: 16px;
 }
 
+body.analysis-complete .editor-panel {
+  flex: 0 0 auto;
+  order: 20;
+}
+
 .panel-header,
 .section-heading,
 .controls-row {
@@ -302,11 +307,6 @@ button {
   color: var(--text);
   border: 1px solid var(--line);
   line-height: 1.55;
-}
-
-.original-preview {
-  max-height: 220px;
-  background: #17212b;
 }
 
 .glossary-term {

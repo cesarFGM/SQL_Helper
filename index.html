@@ -17,11 +17,11 @@
         <div class="status-pill" id="analysisStatus">Listo</div>
       </header>
 
-      <section class="editor-panel" aria-label="Consulta SQL">
+      <section class="editor-panel" id="editorPanel" aria-label="Consulta SQL">
         <div class="panel-header">
           <div>
-            <h2>Consulta</h2>
-            <p>Pega una consulta T-SQL para revisarla sin ejecutarla.</p>
+            <h2 id="editorTitle">Consulta</h2>
+            <p id="editorHint">Pega una consulta T-SQL para revisarla sin ejecutarla.</p>
           </div>
           <button class="ghost-button" id="loadExampleButton" type="button">Ejemplo</button>
         </div>
@@ -57,12 +57,6 @@
         <pre class="report-preview" id="detailedReport">Sin reporte todavía.</pre>
       </section>
 
-      <section class="result-section">
-        <div class="section-heading">
-          <h2>Consulta analizada</h2>
-        </div>
-        <pre class="query-preview original-preview" id="originalQuery">Sin consulta analizada todavía.</pre>
-      </section>
     </section>
 
     <aside class="results-panel" aria-label="Resultados del análisis">
@@ -86,7 +80,7 @@
 
   <div class="glossary-tooltip" id="glossaryTooltip" role="tooltip" hidden></div>
 
-  <script src="app.js?v=20260518-8"></script>
+  <script src="app.js?v=20260518-9"></script>
 </body>
 </html>
 

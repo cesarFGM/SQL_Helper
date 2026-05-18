@@ -2,6 +2,8 @@
 const feedbackLevel = document.getElementById('feedbackLevel');
 const analyzeButton = document.getElementById('analyzeButton');
 const loadExampleButton = document.getElementById('loadExampleButton');
+const editorTitle = document.getElementById('editorTitle');
+const editorHint = document.getElementById('editorHint');
 const analysisStatus = document.getElementById('analysisStatus');
 const scoreValue = document.getElementById('scoreValue');
 const summaryText = document.getElementById('summaryText');
@@ -9,7 +11,6 @@ const findingsList = document.getElementById('findingsList');
 const findingCount = document.getElementById('findingCount');
 const improvedQuery = document.getElementById('improvedQuery');
 const detailedReport = document.getElementById('detailedReport');
-const originalQuery = document.getElementById('originalQuery');
 const copyQueryButton = document.getElementById('copyQueryButton');
 const copyReportButton = document.getElementById('copyReportButton');
 const glossaryTooltip = document.getElementById('glossaryTooltip');
@@ -484,7 +485,11 @@ function renderReport(report) {
   findingCount.textContent = report.findings.length;
   improvedQuery.textContent = report.improved;
   detailedReport.innerHTML = withGlossaryTerms(report.detailed);
-  originalQuery.textContent = report.original || 'Sin consulta analizada todavía.';
+  document.body.classList.toggle('analysis-complete', Boolean(report.original));
+  editorTitle.textContent = report.original ? 'Consulta analizada' : 'Consulta';
+  editorHint.textContent = report.original
+    ? 'Puedes cambiar el nivel de feedback o editar la consulta y volver a analizar.'
+    : 'Pega una consulta T-SQL para revisarla sin ejecutarla.';
   analysisStatus.textContent = 'Analizado';
 
   findingsList.classList.toggle('empty-state', report.findings.length === 0);
@@ -821,6 +826,12 @@ analyzeButton.addEventListener('click', () => {
 
 sqlInput.addEventListener('input', autoGrowSqlInput);
 
+feedbackLevel.addEventListener('change', () => {
+  if (!currentReport) return;
+  const report = analyzeSql(sqlInput.value, feedbackLevel.value);
+  renderReport(report);
+});
+
 loadExampleButton.addEventListener('click', () => {
   sqlInput.value = `SELECT *
 FROM dbo.tabla
@@ -879,7 +890,8 @@ findingsList.textContent = 'Todavía no hay hallazgos.';
 findingCount.textContent = '0';
 improvedQuery.textContent = 'Sin sugerencia todavía.';
 detailedReport.innerHTML = 'Sin reporte todavía.';
-originalQuery.textContent = 'Sin consulta analizada todavía.';
+editorTitle.textContent = 'Consulta';
+editorHint.textContent = 'Pega una consulta T-SQL para revisarla sin ejecutarla.';
 currentReport = null;
 autoGrowSqlInput();
 
