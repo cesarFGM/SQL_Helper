@@ -9,11 +9,190 @@ const findingsList = document.getElementById('findingsList');
 const findingCount = document.getElementById('findingCount');
 const improvedQuery = document.getElementById('improvedQuery');
 const detailedReport = document.getElementById('detailedReport');
-const checklist = document.getElementById('checklist');
 const copyQueryButton = document.getElementById('copyQueryButton');
 const copyReportButton = document.getElementById('copyReportButton');
+const glossaryTooltip = document.getElementById('glossaryTooltip');
 
 let currentReport = null;
+
+const GLOSSARY = [
+  {
+    id: 'sargable',
+    label: 'Sargable',
+    aliases: ['sargabilidad', 'sargable', 'no sargable', 'no sargables'],
+    definition: 'Search ARGument ABLE. Una condición es sargable cuando SQL Server puede aprovechar un índice para buscar por rango o por igualdad. Si aplicas una función sobre la columna, normalmente deja de ser sargable.',
+    example: `-- No sargable: tiende a scan
+WHERE YEAR(fecha) = 2026
+
+-- Sargable: puede hacer seek
+WHERE fecha >= '20260101'
+  AND fecha < '20270101'`
+  },
+  {
+    id: 'index-seek',
+    label: 'Index Seek',
+    aliases: ['index seek', 'seek', 'seeks'],
+    definition: 'El motor va directo al dato usando el índice, como buscar una palabra en el índice de un libro.',
+    example: `-- Si hay índice sobre email, esto puede hacer seek
+WHERE email = 'juan@mail.com'`
+  },
+  {
+    id: 'index-scan',
+    label: 'Index Scan',
+    aliases: ['index scan', 'scan', 'scans'],
+    definition: 'El motor recorre un índice completo de inicio a fin. Puede ser caro si el índice tiene muchas filas.',
+    example: `-- Esto suele forzar más lectura
+WHERE UPPER(email) = 'JUAN@MAIL.COM'`
+  },
+  {
+    id: 'table-scan',
+    label: 'Table Scan',
+    aliases: ['table scan'],
+    definition: 'SQL Server recorre toda la tabla porque no tiene un índice útil para resolver el filtro.',
+    example: `-- Sin índice útil, revisa cada fila
+WHERE descripcion LIKE '%laptop%'`
+  },
+  {
+    id: 'between',
+    label: 'BETWEEN',
+    aliases: ['between'],
+    definition: 'Filtra un rango inclusivo en ambos extremos. Con columnas de fecha que tienen hora puede dejar fuera registros del último día.',
+    example: `-- Puede excluir registros del 31 después de medianoche
+WHERE fecha BETWEEN '20260501' AND '20260531'
+
+-- Más seguro con horas
+WHERE fecha >= '20260501'
+  AND fecha < '20260601'`
+  },
+  {
+    id: 'covering-index',
+    label: 'Covering Index',
+    aliases: ['covering index', 'índice cubriente', 'indices cubrientes', 'índices cubrientes'],
+    definition: 'Índice que contiene todas las columnas que necesita una consulta, evitando ir a la tabla base para completar el resultado.',
+    example: `-- Si el índice contiene email y nombre:
+SELECT nombre
+FROM usuarios
+WHERE email = 'juan@mail.com'`
+  },
+  {
+    id: 'implicit-conversion',
+    label: 'Implicit Conversion',
+    aliases: ['implicit conversion', 'conversión implícita', 'conversion implicita'],
+    definition: 'SQL Server convierte automáticamente un tipo de dato a otro. Puede romper el uso del índice si la conversión ocurre sobre la columna.',
+    example: `-- Riesgoso por formato regional
+WHERE fecha_envio = '01/05/2026'
+
+-- Formato seguro
+WHERE fecha_envio = '20260501'`
+  },
+  {
+    id: 'null',
+    label: 'NULL',
+    aliases: ['null'],
+    definition: 'Valor que significa dato desconocido. No es cero ni cadena vacía. Para compararlo se usa IS NULL o IS NOT NULL.',
+    example: `-- Incorrecto
+WHERE telefono = NULL
+
+-- Correcto
+WHERE telefono IS NULL`
+  },
+  {
+    id: 'join',
+    label: 'JOIN',
+    aliases: ['join', 'inner join', 'left join'],
+    definition: 'Une tablas usando una relación entre columnas.',
+    example: `SELECT p.id, c.nombre
+FROM pedidos p
+INNER JOIN clientes c
+  ON p.cliente_id = c.id`
+  },
+  {
+    id: 'alias',
+    label: 'Alias',
+    aliases: ['alias'],
+    definition: 'Nombre corto que das a una tabla o columna para simplificar la consulta.',
+    example: `SELECT p.id, c.nombre
+FROM pedidos p
+INNER JOIN clientes c
+  ON p.cliente_id = c.id`
+  },
+  {
+    id: 'top',
+    label: 'TOP',
+    aliases: ['top'],
+    definition: 'Limita la cantidad de filas devueltas. Conviene usarlo con ORDER BY para tener resultados deterministas.',
+    example: `SELECT TOP 10 *
+FROM pedidos
+ORDER BY fecha DESC`
+  },
+  {
+    id: 'order-by',
+    label: 'ORDER BY',
+    aliases: ['order by'],
+    definition: 'Ordena el resultado. ASC es ascendente y DESC descendente.',
+    example: `SELECT nombre, salario
+FROM empleados
+ORDER BY salario DESC`
+  },
+  {
+    id: 'group-by',
+    label: 'GROUP BY',
+    aliases: ['group by'],
+    definition: 'Agrupa filas con el mismo valor para aplicar funciones como COUNT, SUM o AVG.',
+    example: `SELECT cliente_id, COUNT(*) AS total_pedidos
+FROM pedidos
+GROUP BY cliente_id`
+  },
+  {
+    id: 'having',
+    label: 'HAVING',
+    aliases: ['having'],
+    definition: 'Es el filtro aplicado a grupos agregados. Se usa después de GROUP BY.',
+    example: `SELECT cliente_id, COUNT(*) AS total
+FROM pedidos
+GROUP BY cliente_id
+HAVING COUNT(*) > 5`
+  },
+  {
+    id: 'deadlock',
+    label: 'Deadlock',
+    aliases: ['deadlock'],
+    definition: 'Dos procesos se bloquean mutuamente esperando recursos que el otro tiene. SQL Server cancela uno para liberar el bloqueo.',
+    example: `-- Proceso A bloquea Clientes y espera Pedidos
+-- Proceso B bloquea Pedidos y espera Clientes
+-- SQL Server cancela uno de los dos`
+  },
+  {
+    id: 'transaction',
+    label: 'Transaction',
+    aliases: ['transaction', 'transacción', 'transaccion'],
+    definition: 'Agrupa varias operaciones en una unidad. Si algo falla, puedes revertir todo con ROLLBACK.',
+    example: `BEGIN TRANSACTION
+  UPDATE cuentas SET saldo = saldo - 100 WHERE id = 1
+  UPDATE cuentas SET saldo = saldo + 100 WHERE id = 2
+COMMIT
+-- ROLLBACK si algo falla`
+  },
+  {
+    id: 'nonclustered-index',
+    label: 'Nonclustered Index',
+    aliases: ['nonclustered index', 'nonclustered', 'índice nonclustered', 'indice nonclustered', 'índice no agrupado', 'indice no agrupado'],
+    definition: 'Índice separado de la tabla base. Guarda claves ordenadas y punteros a las filas, útil para búsquedas frecuentes sin cambiar el orden físico de la tabla.',
+    example: `CREATE NONCLUSTERED INDEX IX_usuarios_email
+ON dbo.usuarios(email)
+INCLUDE (nombre);`
+  },
+  {
+    id: 'index',
+    label: 'Índice',
+    aliases: ['índice', 'indice', 'índices', 'indices'],
+    definition: 'Estructura que ayuda a SQL Server a encontrar filas más rápido, parecido al índice de un libro.',
+    example: `CREATE INDEX IX_pedidos_fecha
+ON dbo.pedidos(fecha_envio);`
+  }
+];
+
+const GLOSSARY_BY_ID = Object.fromEntries(GLOSSARY.map(item => [item.id, item]));
 
 const RULES = [
   {
@@ -150,16 +329,6 @@ const RULES = [
   }
 ];
 
-const CHECKS = [
-  'Selecciona solo las columnas necesarias.',
-  'Incluye WHERE en UPDATE y DELETE salvo operaciones controladas.',
-  'Evita funciones sobre columnas filtradas cuando necesites usar índices.',
-  'Revisa NOLOCK antes de aceptarlo como solución a bloqueos.',
-  'Califica tablas con esquema, por ejemplo dbo.Tabla.',
-  'Usa parámetros en consultas generadas desde aplicaciones.',
-  'Verifica índices para columnas usadas en JOIN, WHERE y ORDER BY.'
-];
-
 function analyzeSql(sql, level) {
   const findings = RULES.filter(rule => rule.test(sql)).map(rule => ({
     id: rule.id,
@@ -294,24 +463,19 @@ function renderReport(report) {
   summaryText.textContent = report.summary;
   findingCount.textContent = report.findings.length;
   improvedQuery.textContent = report.improved;
-  detailedReport.textContent = report.detailed;
+  detailedReport.innerHTML = withGlossaryTerms(report.detailed);
   analysisStatus.textContent = 'Analizado';
 
   findingsList.classList.toggle('empty-state', report.findings.length === 0);
   findingsList.innerHTML = report.findings.length
     ? report.findings.map(item => `
       <article class="finding ${item.severity}">
-        <strong>${severityLabel(item.severity)} · ${escapeHtml(item.title)}</strong>
-        <p>${escapeHtml(item.explanation)}</p>
-        <small>${escapeHtml(item.suggestion)}</small>
+        <strong>${severityLabel(item.severity)} · ${withGlossaryTerms(item.title)}</strong>
+        <p>${withGlossaryTerms(item.explanation)}</p>
+        <small>${withGlossaryTerms(item.suggestion)}</small>
       </article>
     `).join('')
     : 'No se detectaron hallazgos con las reglas actuales.';
-
-  checklist.innerHTML = CHECKS.map(check => {
-    const done = isCheckSatisfied(check, report.findings);
-    return `<li class="${done ? 'done' : ''}"><span>${done ? '✓' : '•'}</span><span>${escapeHtml(check)}</span></li>`;
-  }).join('');
 }
 
 function buildDetailedReport(originalSql, improvedSql, findings) {
@@ -416,16 +580,6 @@ function severityLabel(severity) {
   }[severity];
 }
 
-function isCheckSatisfied(check, findings) {
-  const text = check.toLowerCase();
-  if (text.includes('columnas')) return !findings.some(item => item.id === 'select-star');
-  if (text.includes('update') || text.includes('delete')) return !findings.some(item => item.id.includes('without-where'));
-  if (text.includes('funciones')) return !findings.some(item => item.id === 'function-in-where');
-  if (text.includes('nolock')) return !findings.some(item => item.id === 'nolock');
-  if (text.includes('esquema')) return !findings.some(item => item.id === 'missing-schema');
-  return true;
-}
-
 function escapeHtml(value) {
   return value.replace(/[&<>"]/g, char => ({
     '&': '&amp;',
@@ -433,6 +587,55 @@ function escapeHtml(value) {
     '>': '&gt;',
     '"': '&quot;'
   }[char]));
+}
+
+function withGlossaryTerms(value) {
+  const escaped = escapeHtml(value);
+  const aliases = GLOSSARY
+    .flatMap(item => item.aliases.map(alias => ({ alias, id: item.id })))
+    .sort((a, b) => b.alias.length - a.alias.length);
+
+  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])(${aliases.map(item => escapeRegExp(item.alias)).join('|')})(?![\\p{L}\\p{N}_])`, 'giu');
+  return escaped.replace(pattern, match => {
+    const found = aliases.find(item => item.alias.toLocaleLowerCase('es') === match.toLocaleLowerCase('es'));
+    if (!found) return match;
+    return `<span class="glossary-term" tabindex="0" data-term="${found.id}">${match}</span>`;
+  });
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function showGlossaryTooltip(target) {
+  const term = GLOSSARY_BY_ID[target.dataset.term];
+  if (!term) return;
+
+  glossaryTooltip.innerHTML = `
+    <strong>${escapeHtml(term.label)}</strong>
+    <p>${escapeHtml(term.definition)}</p>
+    <pre>${escapeHtml(term.example)}</pre>
+  `;
+  glossaryTooltip.hidden = false;
+
+  const targetRect = target.getBoundingClientRect();
+  const tooltipRect = glossaryTooltip.getBoundingClientRect();
+  const margin = 10;
+  const left = Math.min(
+    Math.max(margin, targetRect.left),
+    window.innerWidth - tooltipRect.width - margin
+  );
+  const preferredTop = targetRect.bottom + 8;
+  const top = preferredTop + tooltipRect.height + margin > window.innerHeight
+    ? Math.max(margin, targetRect.top - tooltipRect.height - 8)
+    : preferredTop;
+
+  glossaryTooltip.style.left = `${left}px`;
+  glossaryTooltip.style.top = `${top}px`;
+}
+
+function hideGlossaryTooltip() {
+  glossaryTooltip.hidden = true;
 }
 
 function buildTextReport() {
@@ -474,16 +677,46 @@ analyzeButton.addEventListener('click', () => {
   renderReport(report);
 });
 
+sqlInput.addEventListener('input', autoGrowSqlInput);
+
 loadExampleButton.addEventListener('click', () => {
   sqlInput.value = `SELECT *
-FROM Clientes
-WHERE UPPER(Nombre) = 'ANA'
-ORDER BY FechaAlta`;
+FROM dbo.tabla
+WHERE CAST(fechaenvio AS date) = '2025-12-01'`;
+  autoGrowSqlInput();
   analysisStatus.textContent = 'Ejemplo cargado';
 });
 
 copyQueryButton.addEventListener('click', () => copyText(improvedQuery.textContent, copyQueryButton));
 copyReportButton.addEventListener('click', () => copyText(buildTextReport(), copyReportButton));
+
+document.addEventListener('mouseover', event => {
+  const target = event.target.closest('.glossary-term');
+  if (target) showGlossaryTooltip(target);
+});
+
+document.addEventListener('focusin', event => {
+  const target = event.target.closest('.glossary-term');
+  if (target) showGlossaryTooltip(target);
+});
+
+document.addEventListener('mouseout', event => {
+  if (event.target.closest('.glossary-term')) hideGlossaryTooltip();
+});
+
+document.addEventListener('focusout', event => {
+  if (event.target.closest('.glossary-term')) hideGlossaryTooltip();
+});
+
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') hideGlossaryTooltip();
+});
+
+function autoGrowSqlInput() {
+  sqlInput.style.height = 'auto';
+  sqlInput.style.height = `${Math.min(sqlInput.scrollHeight, 620)}px`;
+  sqlInput.style.overflowY = sqlInput.scrollHeight > 620 ? 'auto' : 'hidden';
+}
 
 renderReport(analyzeSql('', feedbackLevel.value));
 analysisStatus.textContent = 'Listo';
@@ -492,9 +725,9 @@ summaryText.textContent = 'Ejecuta un análisis para ver el diagnóstico.';
 findingsList.textContent = 'Todavía no hay hallazgos.';
 findingCount.textContent = '0';
 improvedQuery.textContent = 'Sin sugerencia todavía.';
-detailedReport.textContent = 'Sin reporte todavía.';
-checklist.innerHTML = CHECKS.map(check => `<li><span>•</span><span>${escapeHtml(check)}</span></li>`).join('');
+detailedReport.innerHTML = 'Sin reporte todavía.';
 currentReport = null;
+autoGrowSqlInput();
 
 
 

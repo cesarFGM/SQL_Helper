@@ -130,10 +130,12 @@ h2 {
 }
 
 textarea {
-  flex: 1;
-  min-height: 470px;
+  flex: 0 0 auto;
+  min-height: 220px;
+  max-height: 620px;
   width: 100%;
-  resize: vertical;
+  resize: none;
+  overflow-y: hidden;
   border: 1px solid #c9d5df;
   border-radius: 8px;
   padding: 16px;
@@ -295,25 +297,48 @@ button {
   line-height: 1.55;
 }
 
-.checklist {
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
-  list-style: none;
+.glossary-term {
+  color: #0a6c7a;
+  border-bottom: 1px dotted #0a6c7a;
+  cursor: help;
+  font-weight: 800;
 }
 
-.checklist li {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 8px;
-  align-items: start;
+.glossary-tooltip {
+  position: fixed;
+  z-index: 20;
+  width: min(430px, calc(100vw - 28px));
+  max-height: min(520px, calc(100vh - 28px));
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid #bdd0da;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 18px 42px rgba(16, 24, 32, 0.22);
+  line-height: 1.45;
+}
+
+.glossary-tooltip strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--accent-strong);
+}
+
+.glossary-tooltip p {
+  margin: 0 0 10px;
   color: var(--muted);
 }
 
-.checklist li.done {
-  color: var(--success);
-  font-weight: 700;
+.glossary-tooltip pre {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: #101820;
+  color: #f3f7f9;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.82rem;
 }
 
 @media (max-width: 980px) {
@@ -322,7 +347,7 @@ button {
   }
 
   textarea {
-    min-height: 360px;
+    min-height: 220px;
   }
 }
 
