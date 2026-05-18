@@ -230,6 +230,11 @@ function suggestSargableFilters(sql) {
     return `${column} >= ${value} AND ${column} < DATEADD(day, 1, ${value})`;
   });
 
+  text = text.replace(/\bcast\s*\(\s*([\w.\[\]]+)\s+as\s+date\s*\)\s*=\s*(N?'[^']*'|@[\w]+)/gi, (match, column, value) => {
+    changed = true;
+    return `${column} >= ${value} AND ${column} < DATEADD(day, 1, ${value})`;
+  });
+
   if (!changed) {
     text += '\n-- TODO: hay funciones en WHERE. Reescribe el filtro para comparar la columna directamente.';
     text += "\n-- Ejemplo: YEAR(Fecha) = 2026 -> Fecha >= '2026-01-01' AND Fecha < '2027-01-01'.";
