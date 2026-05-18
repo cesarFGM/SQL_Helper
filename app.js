@@ -22,6 +22,22 @@ const SQL_INPUT_MAX_HEIGHT = 620;
 
 const GLOSSARY = [
   {
+    id: 'score',
+    label: 'Puntuación',
+    aliases: [],
+    definition: 'La puntuación actual se calcula con reglas locales. Empieza en 100 y resta puntos según la severidad de cada hallazgo detectado.',
+    example: `Crítico: -28 puntos
+Advertencia: -13 puntos
+Sugerencia: -6 puntos
+
+Ejemplo:
+SELECT * = advertencia (-13)
+YEAR(columna) en WHERE = advertencia (-13)
+Falta ; final = sugerencia (-6)
+
+Resultado: 100 - 13 - 13 - 6 = 68`
+  },
+  {
     id: 'sargable',
     label: 'Sargable',
     aliases: ['sargabilidad', 'sargable', 'no sargable', 'no sargables'],
