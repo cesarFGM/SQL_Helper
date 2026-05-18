@@ -9,6 +9,7 @@ const findingsList = document.getElementById('findingsList');
 const findingCount = document.getElementById('findingCount');
 const improvedQuery = document.getElementById('improvedQuery');
 const detailedReport = document.getElementById('detailedReport');
+const originalQuery = document.getElementById('originalQuery');
 const copyQueryButton = document.getElementById('copyQueryButton');
 const copyReportButton = document.getElementById('copyReportButton');
 const glossaryTooltip = document.getElementById('glossaryTooltip');
@@ -347,7 +348,7 @@ function analyzeSql(sql, level) {
   const summary = buildSummary(score, findings, level);
   const detailed = buildDetailedReport(sql, improved, findings);
 
-  return { score, findings, improved, summary, detailed };
+  return { score, findings, improved, summary, detailed, original: sql.trim() };
 }
 
 function buildImprovedQuery(sql, findings) {
@@ -483,6 +484,7 @@ function renderReport(report) {
   findingCount.textContent = report.findings.length;
   improvedQuery.textContent = report.improved;
   detailedReport.innerHTML = withGlossaryTerms(report.detailed);
+  originalQuery.textContent = report.original || 'Sin consulta analizada todavía.';
   analysisStatus.textContent = 'Analizado';
 
   findingsList.classList.toggle('empty-state', report.findings.length === 0);
@@ -507,9 +509,6 @@ function buildDetailedReport(originalSql, improvedSql, findings) {
   const notes = buildOptimizationNotes(originalSql, findings);
 
   return `Problemas en la consulta original:
-sql
-${originalSql.trim()}
-
 ${problems}
 
 Versión corregida y optimizada:
@@ -783,7 +782,7 @@ function getGlossaryTarget(event) {
 
 function buildTextReport() {
   if (!currentReport) return 'No hay análisis todavía.';
-  return `SQL Helper\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\n${currentReport.detailed}`;
+  return `SQL Helper\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\n${currentReport.detailed}\n\nConsulta analizada:\n${currentReport.original || 'Sin consulta analizada.'}`;
 }
 
 async function copyText(text, button) {
@@ -880,6 +879,7 @@ findingsList.textContent = 'Todavía no hay hallazgos.';
 findingCount.textContent = '0';
 improvedQuery.textContent = 'Sin sugerencia todavía.';
 detailedReport.innerHTML = 'Sin reporte todavía.';
+originalQuery.textContent = 'Sin consulta analizada todavía.';
 currentReport = null;
 autoGrowSqlInput();
 

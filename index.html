@@ -40,6 +40,29 @@
           <button class="primary-button" id="analyzeButton" type="button">Analizar consulta</button>
         </div>
       </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Versión sugerida</h2>
+          <button class="icon-button" id="copyQueryButton" type="button" title="Copiar consulta sugerida" aria-label="Copiar consulta sugerida">Copiar</button>
+        </div>
+        <pre class="query-preview" id="improvedQuery">Sin sugerencia todavía.</pre>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Reporte detallado</h2>
+          <button class="icon-button" id="copyReportButton" type="button" title="Copiar resultado" aria-label="Copiar resultado">Copiar resultado</button>
+        </div>
+        <pre class="report-preview" id="detailedReport">Sin reporte todavía.</pre>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Consulta analizada</h2>
+        </div>
+        <pre class="query-preview original-preview" id="originalQuery">Sin consulta analizada todavía.</pre>
+      </section>
     </section>
 
     <aside class="results-panel" aria-label="Resultados del análisis">
@@ -58,28 +81,12 @@
         </div>
         <div id="findingsList" class="findings empty-state">Todavía no hay hallazgos.</div>
       </section>
-
-      <section class="result-section">
-        <div class="section-heading">
-          <h2>Versión sugerida</h2>
-          <button class="icon-button" id="copyQueryButton" type="button" title="Copiar consulta sugerida" aria-label="Copiar consulta sugerida">Copiar</button>
-        </div>
-        <pre class="query-preview" id="improvedQuery">Sin sugerencia todavía.</pre>
-      </section>
-
-      <section class="result-section">
-        <div class="section-heading">
-          <h2>Reporte detallado</h2>
-          <button class="icon-button" id="copyReportButton" type="button" title="Copiar resultado" aria-label="Copiar resultado">Copiar resultado</button>
-        </div>
-        <pre class="report-preview" id="detailedReport">Sin reporte todavía.</pre>
-      </section>
     </aside>
   </main>
 
   <div class="glossary-tooltip" id="glossaryTooltip" role="tooltip" hidden></div>
 
-  <script src="app.js?v=20260518-7"></script>
+  <script src="app.js?v=20260518-8"></script>
 </body>
 </html>
 

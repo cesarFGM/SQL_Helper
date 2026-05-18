@@ -50,6 +50,12 @@ textarea {
   gap: 18px;
 }
 
+.results-panel {
+  position: sticky;
+  top: 18px;
+  align-self: start;
+}
+
 .topbar,
 .editor-panel,
 .score-card,
@@ -298,6 +304,11 @@ button {
   line-height: 1.55;
 }
 
+.original-preview {
+  max-height: 220px;
+  background: #17212b;
+}
+
 .glossary-term {
   color: #0a6c7a;
   border-bottom: 1px dotted #0a6c7a;
@@ -345,6 +356,10 @@ button {
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;
+  }
+
+  .results-panel {
+    position: static;
   }
 
   textarea {
