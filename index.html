@@ -1,0 +1,82 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQL Mentor - Revisor de consultas SQL Server</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="workspace" aria-label="Revisor SQL">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">SQL Server</p>
+          <h1>SQL Mentor</h1>
+        </div>
+        <div class="status-pill" id="analysisStatus">Listo</div>
+      </header>
+
+      <section class="editor-panel" aria-label="Consulta SQL">
+        <div class="panel-header">
+          <div>
+            <h2>Consulta</h2>
+            <p>Pega una consulta T-SQL para revisarla sin ejecutarla.</p>
+          </div>
+          <button class="ghost-button" id="loadExampleButton" type="button">Ejemplo</button>
+        </div>
+
+        <textarea id="sqlInput" spellcheck="false" placeholder="SELECT * FROM dbo.Clientes WHERE UPPER(Nombre) = 'ANA';"></textarea>
+
+        <div class="controls-row">
+          <label class="field-group" for="feedbackLevel">
+            <span>Nivel de feedback</span>
+            <select id="feedbackLevel">
+              <option value="beginner">Principiante</option>
+              <option value="intermediate" selected>Intermedio</option>
+              <option value="advanced">Avanzado</option>
+            </select>
+          </label>
+          <button class="primary-button" id="analyzeButton" type="button">Analizar consulta</button>
+        </div>
+      </section>
+    </section>
+
+    <aside class="results-panel" aria-label="Resultados del análisis">
+      <section class="score-card">
+        <div>
+          <p class="eyebrow">Puntuación</p>
+          <div class="score" id="scoreValue">--</div>
+        </div>
+        <p id="summaryText">Ejecuta un análisis para ver el diagnóstico.</p>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Hallazgos</h2>
+          <span id="findingCount">0</span>
+        </div>
+        <div id="findingsList" class="findings empty-state">Todavía no hay hallazgos.</div>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Versión sugerida</h2>
+          <button class="icon-button" id="copyQueryButton" type="button" title="Copiar consulta sugerida" aria-label="Copiar consulta sugerida">Copiar</button>
+        </div>
+        <pre class="query-preview" id="improvedQuery">Sin sugerencia todavía.</pre>
+      </section>
+
+      <section class="result-section">
+        <div class="section-heading">
+          <h2>Checklist</h2>
+          <button class="icon-button" id="copyReportButton" type="button" title="Copiar resultado" aria-label="Copiar resultado">Copiar resultado</button>
+        </div>
+        <ul id="checklist" class="checklist"></ul>
+      </section>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
