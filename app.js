@@ -70,14 +70,13 @@ WHERE fecha >= '20260501'
   AND fecha < '20260601'`
   },
   {
-    id: 'covering-index',
-    label: 'Covering Index',
-    aliases: ['covering index', 'índice cubriente', 'indices cubrientes', 'índices cubrientes'],
-    definition: 'Índice que contiene todas las columnas que necesita una consulta, evitando ir a la tabla base para completar el resultado.',
-    example: `-- Si el índice contiene email y nombre:
-SELECT nombre
-FROM usuarios
-WHERE email = 'juan@mail.com'`
+    id: 'nonclustered-index',
+    label: 'Índices NONCLUSTERED',
+    aliases: ['nonclustered index', 'nonclustered', 'índice nonclustered', 'indice nonclustered', 'índices nonclustered', 'indices nonclustered', 'índice no agrupado', 'indice no agrupado'],
+    definition: 'Índices separados de la tabla base. Guardan claves ordenadas y punteros a las filas, útiles para búsquedas frecuentes sin cambiar el orden físico de la tabla. Pueden incluir columnas extra con INCLUDE para evitar lecturas adicionales.',
+    example: `CREATE NONCLUSTERED INDEX IX_usuarios_email
+ON dbo.usuarios(email)
+INCLUDE (nombre);`
   },
   {
     id: 'implicit-conversion',
@@ -177,15 +176,6 @@ HAVING COUNT(*) > 5`
   UPDATE cuentas SET saldo = saldo + 100 WHERE id = 2
 COMMIT
 -- ROLLBACK si algo falla`
-  },
-  {
-    id: 'nonclustered-index',
-    label: 'Nonclustered Index',
-    aliases: ['nonclustered index', 'nonclustered', 'índice nonclustered', 'indice nonclustered', 'índice no agrupado', 'indice no agrupado'],
-    definition: 'Índice separado de la tabla base. Guarda claves ordenadas y punteros a las filas, útil para búsquedas frecuentes sin cambiar el orden físico de la tabla.',
-    example: `CREATE NONCLUSTERED INDEX IX_usuarios_email
-ON dbo.usuarios(email)
-INCLUDE (nombre);`
   },
   {
     id: 'index',
