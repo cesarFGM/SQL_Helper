@@ -14,6 +14,9 @@ const copyReportButton = document.getElementById('copyReportButton');
 const glossaryTooltip = document.getElementById('glossaryTooltip');
 
 let currentReport = null;
+const SQL_INPUT_BASE_HEIGHT = 220;
+const SQL_INPUT_GROW_AFTER = 300;
+const SQL_INPUT_MAX_HEIGHT = 620;
 
 const GLOSSARY = [
   {
@@ -258,14 +261,14 @@ const RULES = [
   {
     id: 'function-in-where',
     severity: 'warning',
-    test: sql => /\bwhere\b[\s\S]*(upper|lower|year|month|day|convert|cast|isnull|coalesce)\s*\(/i.test(sql),
-    title: 'Función aplicada en filtros',
+    test: sql => hasFunctionOnFilteredColumn(sql),
+    title: 'Función aplicada sobre columna filtrada',
     explain: {
-      beginner: 'Usar funciones sobre columnas en WHERE puede impedir que SQL Server use índices de forma eficiente.',
-      intermediate: 'Las funciones en predicados suelen hacer la condición no sargable y fuerzan más lectura.',
-      advanced: 'Predicados no sargables reducen seeks, empeoran cardinalidad estimada y elevan I/O.'
+      beginner: 'Usar funciones sobre columnas filtradas puede impedir que SQL Server use índices de forma eficiente.',
+      intermediate: 'El problema no es la función en el WHERE por sí sola; es aplicar la función sobre la columna que se quiere buscar.',
+      advanced: 'Funciones sobre columnas filtradas rompen sargabilidad, reducen index seeks y pueden provocar scans con más I/O.'
     },
-    suggestion: 'Reescribe el filtro para comparar la columna directamente o usa columnas calculadas indexadas.'
+    suggestion: 'Compara la columna directamente contra un rango o valor calculado fuera de la columna.'
   },
   {
     id: 'leading-wildcard',
@@ -390,10 +393,25 @@ function suggestSargableFilters(sql) {
     return `${column} = ${value} /* Revisa collation: reemplaza ${fn.toUpperCase()}(${column}) para permitir uso de índice. */`;
   });
 
+  text = text.replace(/\byear\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*year\s*\(\s*getdate\s*\(\s*\)\s*\)/gi, (match, column) => {
+    changed = true;
+    return `${column} >= DATEFROMPARTS(YEAR(GETDATE()), 1, 1) AND ${column} < DATEFROMPARTS(YEAR(GETDATE()) + 1, 1, 1)`;
+  });
+
+  text = text.replace(/\byear\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*year\s*\(\s*sysdatetime\s*\(\s*\)\s*\)/gi, (match, column) => {
+    changed = true;
+    return `${column} >= DATEFROMPARTS(YEAR(SYSDATETIME()), 1, 1) AND ${column} < DATEFROMPARTS(YEAR(SYSDATETIME()) + 1, 1, 1)`;
+  });
+
   text = text.replace(/\byear\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*(\d{4})/gi, (match, column, year) => {
     changed = true;
     const nextYear = Number(year) + 1;
-    return `${column} >= '${year}-01-01' AND ${column} < '${nextYear}-01-01'`;
+    return `${column} >= '${year}0101' AND ${column} < '${nextYear}0101'`;
+  });
+
+  text = text.replace(/\byear\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*(@[\w]+)/gi, (match, column, value) => {
+    changed = true;
+    return `${column} >= DATEFROMPARTS(${value}, 1, 1) AND ${column} < DATEFROMPARTS(${value} + 1, 1, 1)`;
   });
 
   text = text.replace(/\bconvert\s*\(\s*date\s*,\s*([\w.\[\]]+)\s*\)\s*(=|>=|>|<=|<)\s*(N?'[^']*'|@[\w]+)/gi, (match, column, operator, value) => {
@@ -407,8 +425,9 @@ function suggestSargableFilters(sql) {
   });
 
   if (!changed) {
-    text += '\n-- TODO: hay funciones en WHERE. Reescribe el filtro para comparar la columna directamente.';
-    text += "\n-- Ejemplo: YEAR(Fecha) = 2026 -> Fecha >= '2026-01-01' AND Fecha < '2027-01-01'.";
+    text += '\n-- TODO: hay funciones aplicadas sobre columnas filtradas.';
+    text += "\n-- No lo muevas a una CTE solo para filtrar por el alias: SQL Server suele expandir la CTE.";
+    text += "\n-- Reescribe el predicado para comparar la columna directamente contra un rango.";
   }
 
   return text;
@@ -502,7 +521,7 @@ ${notes}`;
 
 function buildDetailedProblem(item) {
   if (item.id === 'function-in-where') {
-    return 'aplicar funciones sobre columnas en el WHERE rompe la sargabilidad. SQL Server puede dejar de usar un índice sobre esa columna y terminar evaluando fila por fila.';
+    return 'el problema no es usar funciones en el WHERE; el problema es aplicar una función sobre la columna filtrada. SQL Server puede dejar de usar un índice sobre esa columna y terminar evaluando fila por fila.';
   }
 
   if (item.id === 'select-star') {
@@ -522,6 +541,7 @@ function buildDetailedProblem(item) {
 
 function buildOptimizationNotes(originalSql, findings) {
   const dateCast = getDateCastInfo(originalSql);
+  const functionInfo = getColumnFunctionInfo(originalSql);
   const hasDateCast = Boolean(dateCast);
   const hasHyphenDate = /N?'\d{4}-\d{2}-\d{2}'/i.test(originalSql);
   const parts = [];
@@ -537,6 +557,71 @@ ${dateCast.column} < DATEADD(day, 1, ${dateCast.safeValue})
 Así el motor puede buscar por rango en un índice sobre ${dateCast.column} en vez de hacer un scan evaluando CAST fila por fila.`);
   }
 
+  if (functionInfo) {
+    parts.push(buildFunctionOnColumnGuidance(functionInfo));
+  }
+
+  if (functionInfo && functionInfo.name === 'YEAR') {
+    parts.push(`Patrón recomendado para YEAR(${functionInfo.column})
+La versión correcta es comparar ${functionInfo.column} directamente contra un rango:
+
+DECLARE @inicioAnio date = DATEFROMPARTS(YEAR(GETDATE()), 1, 1);
+DECLARE @inicioProximoAnio date = DATEADD(year, 1, @inicioAnio);
+
+SELECT columna_a, columna_b
+FROM dbo.prueba
+WHERE ${functionInfo.column} >= @inicioAnio
+  AND ${functionInfo.column} < @inicioProximoAnio;
+
+También puedes calcular YEAR(${functionInfo.column}) en el SELECT si lo necesitas mostrar, pero no usarlo como filtro principal:
+
+SELECT columna_a, columna_b, YEAR(${functionInfo.column}) AS anio_envio
+FROM dbo.prueba
+WHERE ${functionInfo.column} >= @inicioAnio
+  AND ${functionInfo.column} < @inicioProximoAnio;`);
+  }
+
+  if (functionInfo && ['UPPER', 'LOWER'].includes(functionInfo.name)) {
+    parts.push(`Patrón recomendado para ${functionInfo.name}(${functionInfo.column})
+Si buscas igualdad de texto, intenta comparar la columna directamente:
+
+WHERE ${functionInfo.column} = @valor
+
+Si necesitas búsqueda insensible a mayúsculas/minúsculas, revisa la collation de la columna o usa una columna normalizada persistida e indexada. Evita ${functionInfo.name}(${functionInfo.column}) en el filtro principal si esa columna debe usar índice.`);
+  }
+
+  if (functionInfo && ['ISNULL', 'COALESCE'].includes(functionInfo.name)) {
+    parts.push(`Patrón recomendado para ${functionInfo.name}(${functionInfo.column})
+Evita envolver la columna para reemplazar NULL dentro del predicado. En muchos casos puedes expresar la lógica con condiciones directas:
+
+WHERE ${functionInfo.column} = @valor
+   OR (${functionInfo.column} IS NULL AND @valor IS NULL)
+
+Si el negocio necesita tratar NULL como un valor fijo, considera una columna calculada persistida e indexada para ese criterio.`);
+  }
+
+  if (functionInfo && ['CAST', 'CONVERT'].includes(functionInfo.name) && !hasDateCast) {
+    parts.push(`Patrón recomendado para ${functionInfo.name} sobre ${functionInfo.column}
+Evita convertir la columna filtrada. Convierte el valor de comparación al tipo correcto o usa un rango si estás recortando fecha/hora.
+
+La idea es:
+
+WHERE ${functionInfo.column} >= @inicio
+  AND ${functionInfo.column} < @fin`);
+  }
+
+  if (functionInfo && ['MONTH', 'DAY'].includes(functionInfo.name)) {
+    parts.push(`Patrón recomendado para ${functionInfo.name}(${functionInfo.column})
+Filtrar solo por mes o día suele ser delicado porque atraviesa años distintos. Si buscas un periodo concreto, define límites de fecha:
+
+WHERE ${functionInfo.column} >= @inicioPeriodo
+  AND ${functionInfo.column} < @finPeriodo`);
+  }
+
+  if (functionInfo && !['YEAR', 'UPPER', 'LOWER', 'ISNULL', 'COALESCE', 'CAST', 'CONVERT', 'MONTH', 'DAY'].includes(functionInfo.name)) {
+    parts.push(`TODO: revisa cómo expresar ${functionInfo.name}(${functionInfo.column}) sin transformar la columna filtrada. La regla general es calcular el valor del lado derecho o crear una columna calculada persistida e indexada si esa lógica es parte del modelo.`);
+  }
+
   if (hasHyphenDate) {
     parts.push(`¿Por qué usar 'YYYYMMDD' y no 'YYYY-MM-DD'?
 El formato 'YYYYMMDD' es el formato más seguro para literales de fecha en SQL Server porque no depende de SET LANGUAGE ni de SET DATEFORMAT.
@@ -549,8 +634,9 @@ Formato        Seguro    Riesgo
 
   if (findings.some(item => item.id === 'function-in-where')) {
     parts.push(`Comparativa final:
-Versión con función en columna: no sargable, tiende a scan.
-Versión con rango directo: sargable, puede usar index seek.
+Función sobre columna filtrada: no sargable, tiende a scan.
+Función sobre GETDATE(), variable o constante: aceptable, porque no transforma la columna.
+Rango directo sobre la columna: sargable, puede usar index seek.
 
 El resultado lógico se mantiene, pero el rendimiento puede cambiar muchísimo en tablas grandes.`);
   }
@@ -560,6 +646,56 @@ El resultado lógico se mantiene, pero el rendimiento puede cambiar muchísimo e
   }
 
   return parts.join('\n\n');
+}
+
+function buildFunctionOnColumnGuidance(info) {
+  return `¿Por qué no mover ${info.name}(${info.column}) a una CTE?
+Una CTE no materializa automáticamente el resultado ni crea un índice sobre el alias calculado. SQL Server normalmente expande la CTE y el filtro termina siendo equivalente a:
+
+WHERE ${info.name}(${info.column}) = ...
+
+Eso mantiene el mismo problema: la función sigue aplicada sobre la columna filtrada.
+
+La regla DBA senior es:
+Función sobre columna filtrada: peligro, puede romper sargabilidad.
+Función sobre constante, variable o GETDATE(): normalmente aceptable.
+Columna comparada directamente contra valor o rango: preferible.`;
+}
+
+function getColumnFunctionInfo(sql) {
+  const whereMatch = sql.match(/\bwhere\b([\s\S]*)/i);
+  if (!whereMatch) return null;
+
+  const whereClause = whereMatch[1];
+  const patterns = [
+    /\b(cast)\s*\(\s*([\w.\[\]]+)\s+as\s+\w+/i,
+    /\b(convert)\s*\(\s*\w+\s*,\s*([\w.\[\]]+)/i,
+    /\b(upper|lower|year|month|day|isnull|coalesce)\s*\(\s*([\w.\[\]]+)/i,
+    /\b([a-z_][\w$]*)\s*\(\s*([\w.\[\]]+)/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = whereClause.match(pattern);
+    if (match && isLikelyColumnReference(match[2]) && !isIgnoredFunction(match[1])) {
+      return { name: match[1].toUpperCase(), column: match[2] };
+    }
+  }
+
+  return null;
+}
+
+function hasFunctionOnFilteredColumn(sql) {
+  return Boolean(getColumnFunctionInfo(sql));
+}
+
+function isLikelyColumnReference(value) {
+  if (!value) return false;
+  if (value.startsWith('@') || value.startsWith("'") || /^\d/.test(value)) return false;
+  return /^[\w.\[\]]+$/.test(value);
+}
+
+function isIgnoredFunction(name) {
+  return ['GETDATE', 'SYSDATETIME', 'CURRENT_TIMESTAMP', 'DATEFROMPARTS', 'DATEADD'].includes(name.toUpperCase());
 }
 
 function getDateCastInfo(sql) {
@@ -595,11 +731,12 @@ function withGlossaryTerms(value) {
     .flatMap(item => item.aliases.map(alias => ({ alias, id: item.id })))
     .sort((a, b) => b.alias.length - a.alias.length);
 
-  const pattern = new RegExp(`(?<![\\p{L}\\p{N}_])(${aliases.map(item => escapeRegExp(item.alias)).join('|')})(?![\\p{L}\\p{N}_])`, 'giu');
-  return escaped.replace(pattern, match => {
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_])(${aliases.map(item => escapeRegExp(item.alias)).join('|')})(?=$|[^\\p{L}\\p{N}_])`, 'giu');
+  return escaped.replace(pattern, (fullMatch, prefix, match) => {
     const found = aliases.find(item => item.alias.toLocaleLowerCase('es') === match.toLocaleLowerCase('es'));
-    if (!found) return match;
-    return `<span class="glossary-term" tabindex="0" data-term="${found.id}">${match}</span>`;
+    if (!found) return fullMatch;
+    const term = GLOSSARY_BY_ID[found.id];
+    return `${prefix}<span class="glossary-term" tabindex="0" data-term="${found.id}" title="${escapeHtml(term.definition)}">${match}</span>`;
   });
 }
 
@@ -636,6 +773,12 @@ function showGlossaryTooltip(target) {
 
 function hideGlossaryTooltip() {
   glossaryTooltip.hidden = true;
+}
+
+function getGlossaryTarget(event) {
+  return event.target && event.target.closest
+    ? event.target.closest('.glossary-term')
+    : null;
 }
 
 function buildTextReport() {
@@ -691,21 +834,26 @@ copyQueryButton.addEventListener('click', () => copyText(improvedQuery.textConte
 copyReportButton.addEventListener('click', () => copyText(buildTextReport(), copyReportButton));
 
 document.addEventListener('mouseover', event => {
-  const target = event.target.closest('.glossary-term');
+  const target = getGlossaryTarget(event);
   if (target) showGlossaryTooltip(target);
 });
 
 document.addEventListener('focusin', event => {
-  const target = event.target.closest('.glossary-term');
+  const target = getGlossaryTarget(event);
+  if (target) showGlossaryTooltip(target);
+});
+
+document.addEventListener('click', event => {
+  const target = getGlossaryTarget(event);
   if (target) showGlossaryTooltip(target);
 });
 
 document.addEventListener('mouseout', event => {
-  if (event.target.closest('.glossary-term')) hideGlossaryTooltip();
+  if (getGlossaryTarget(event)) hideGlossaryTooltip();
 });
 
 document.addEventListener('focusout', event => {
-  if (event.target.closest('.glossary-term')) hideGlossaryTooltip();
+  if (getGlossaryTarget(event)) hideGlossaryTooltip();
 });
 
 document.addEventListener('keydown', event => {
@@ -713,9 +861,15 @@ document.addEventListener('keydown', event => {
 });
 
 function autoGrowSqlInput() {
-  sqlInput.style.height = 'auto';
-  sqlInput.style.height = `${Math.min(sqlInput.scrollHeight, 620)}px`;
-  sqlInput.style.overflowY = sqlInput.scrollHeight > 620 ? 'auto' : 'hidden';
+  sqlInput.style.height = `${SQL_INPUT_BASE_HEIGHT}px`;
+
+  if (sqlInput.scrollHeight > SQL_INPUT_GROW_AFTER) {
+    const nextHeight = Math.min(sqlInput.scrollHeight, SQL_INPUT_MAX_HEIGHT);
+    sqlInput.style.height = `${nextHeight}px`;
+    sqlInput.style.overflowY = sqlInput.scrollHeight > SQL_INPUT_MAX_HEIGHT ? 'auto' : 'hidden';
+  } else {
+    sqlInput.style.overflowY = 'auto';
+  }
 }
 
 renderReport(analyzeSql('', feedbackLevel.value));

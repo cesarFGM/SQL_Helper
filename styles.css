@@ -131,11 +131,12 @@ h2 {
 
 textarea {
   flex: 0 0 auto;
+  height: 220px;
   min-height: 220px;
   max-height: 620px;
   width: 100%;
   resize: none;
-  overflow-y: hidden;
+  overflow-y: auto;
   border: 1px solid #c9d5df;
   border-radius: 8px;
   padding: 16px;
