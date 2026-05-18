@@ -8,6 +8,7 @@ const summaryText = document.getElementById('summaryText');
 const findingsList = document.getElementById('findingsList');
 const findingCount = document.getElementById('findingCount');
 const improvedQuery = document.getElementById('improvedQuery');
+const detailedReport = document.getElementById('detailedReport');
 const checklist = document.getElementById('checklist');
 const copyQueryButton = document.getElementById('copyQueryButton');
 const copyReportButton = document.getElementById('copyReportButton');
@@ -172,8 +173,9 @@ function analyzeSql(sql, level) {
   const score = Math.max(0, 100 - findings.reduce((sum, item) => sum + penalties[item.severity], 0));
   const improved = buildImprovedQuery(sql, findings);
   const summary = buildSummary(score, findings, level);
+  const detailed = buildDetailedReport(sql, improved, findings);
 
-  return { score, findings, improved, summary };
+  return { score, findings, improved, summary, detailed };
 }
 
 function buildImprovedQuery(sql, findings) {
@@ -225,14 +227,14 @@ function suggestSargableFilters(sql) {
     return `${column} >= '${year}-01-01' AND ${column} < '${nextYear}-01-01'`;
   });
 
-  text = text.replace(/\bconvert\s*\(\s*date\s*,\s*([\w.\[\]]+)\s*\)\s*=\s*(N?'[^']*'|@[\w]+)/gi, (match, column, value) => {
+  text = text.replace(/\bconvert\s*\(\s*date\s*,\s*([\w.\[\]]+)\s*\)\s*(=|>=|>|<=|<)\s*(N?'[^']*'|@[\w]+)/gi, (match, column, operator, value) => {
     changed = true;
-    return `${column} >= ${value} AND ${column} < DATEADD(day, 1, ${value})`;
+    return buildDateRangePredicate(column, operator, value);
   });
 
-  text = text.replace(/\bcast\s*\(\s*([\w.\[\]]+)\s+as\s+date\s*\)\s*=\s*(N?'[^']*'|@[\w]+)/gi, (match, column, value) => {
+  text = text.replace(/\bcast\s*\(\s*([\w.\[\]]+)\s+as\s+date\s*\)\s*(=|>=|>|<=|<)\s*(N?'[^']*'|@[\w]+)/gi, (match, column, operator, value) => {
     changed = true;
-    return `${column} >= ${value} AND ${column} < DATEADD(day, 1, ${value})`;
+    return buildDateRangePredicate(column, operator, value);
   });
 
   if (!changed) {
@@ -241,6 +243,33 @@ function suggestSargableFilters(sql) {
   }
 
   return text;
+}
+
+function buildDateRangePredicate(column, operator, value) {
+  const safeValue = toSafeSqlDateLiteral(value);
+
+  if (operator === '=') {
+    return `${column} >= ${safeValue} AND ${column} < DATEADD(day, 1, ${safeValue})`;
+  }
+
+  if (operator === '>=') {
+    return `${column} >= ${safeValue}`;
+  }
+
+  if (operator === '>') {
+    return `${column} >= DATEADD(day, 1, ${safeValue})`;
+  }
+
+  if (operator === '<=') {
+    return `${column} < DATEADD(day, 1, ${safeValue})`;
+  }
+
+  return `${column} < ${safeValue}`;
+}
+
+function toSafeSqlDateLiteral(value) {
+  const match = value.match(/^N?'(\d{4})-(\d{2})-(\d{2})'$/i);
+  return match ? `'${match[1]}${match[2]}${match[3]}'` : value;
 }
 
 function buildSummary(score, findings, level) {
@@ -265,6 +294,7 @@ function renderReport(report) {
   summaryText.textContent = report.summary;
   findingCount.textContent = report.findings.length;
   improvedQuery.textContent = report.improved;
+  detailedReport.textContent = report.detailed;
   analysisStatus.textContent = 'Analizado';
 
   findingsList.classList.toggle('empty-state', report.findings.length === 0);
@@ -282,6 +312,100 @@ function renderReport(report) {
     const done = isCheckSatisfied(check, report.findings);
     return `<li class="${done ? 'done' : ''}"><span>${done ? '✓' : '•'}</span><span>${escapeHtml(check)}</span></li>`;
   }).join('');
+}
+
+function buildDetailedReport(originalSql, improvedSql, findings) {
+  if (!originalSql.trim()) return 'Ejecuta un análisis para generar el reporte detallado.';
+
+  const problems = findings.length
+    ? findings.map(item => `- ${item.title}: ${buildDetailedProblem(item)}`).join('\n')
+    : '- No se detectaron problemas con las reglas actuales.';
+
+  const notes = buildOptimizationNotes(originalSql, findings);
+
+  return `Problemas en la consulta original:
+sql
+${originalSql.trim()}
+
+${problems}
+
+Versión corregida y optimizada:
+sql
+${improvedSql}
+
+${notes}`;
+}
+
+function buildDetailedProblem(item) {
+  if (item.id === 'function-in-where') {
+    return 'aplicar funciones sobre columnas en el WHERE rompe la sargabilidad. SQL Server puede dejar de usar un índice sobre esa columna y terminar evaluando fila por fila.';
+  }
+
+  if (item.id === 'select-star') {
+    return 'trae columnas innecesarias, acopla la consulta al esquema e impide que el optimizador aproveche índices cubrientes cuando solo necesitas pocas columnas.';
+  }
+
+  if (item.id === 'no-semicolon') {
+    return 'conviene terminar la sentencia con punto y coma para evitar ambigüedades en lotes T-SQL.';
+  }
+
+  if (item.id === 'missing-schema') {
+    return 'usar el esquema explícito, por ejemplo dbo.Tabla, evita ambigüedad y mejora la claridad.';
+  }
+
+  return `${item.explanation} ${item.suggestion}`;
+}
+
+function buildOptimizationNotes(originalSql, findings) {
+  const dateCast = getDateCastInfo(originalSql);
+  const hasDateCast = Boolean(dateCast);
+  const hasHyphenDate = /N?'\d{4}-\d{2}-\d{2}'/i.test(originalSql);
+  const parts = [];
+
+  if (hasDateCast) {
+    parts.push(`¿Por qué funciona sin el CAST?
+SQL Server puede comparar la columna directamente contra un literal de fecha. Si la columna es DATETIME o DATETIME2, el rango conserva las horas del día completo sin convertir la columna.
+
+Ejemplo:
+${dateCast.column} >= ${dateCast.safeValue}
+${dateCast.column} < DATEADD(day, 1, ${dateCast.safeValue})
+
+Así el motor puede buscar por rango en un índice sobre ${dateCast.column} en vez de hacer un scan evaluando CAST fila por fila.`);
+  }
+
+  if (hasHyphenDate) {
+    parts.push(`¿Por qué usar 'YYYYMMDD' y no 'YYYY-MM-DD'?
+El formato 'YYYYMMDD' es el formato más seguro para literales de fecha en SQL Server porque no depende de SET LANGUAGE ni de SET DATEFORMAT.
+
+Comparativa:
+Formato        Seguro    Riesgo
+'20251201'     Sí        Ninguno para fecha compacta YYYYMMDD
+'2025-12-01'   Depende   Puede variar según configuración regional`);
+  }
+
+  if (findings.some(item => item.id === 'function-in-where')) {
+    parts.push(`Comparativa final:
+Versión con función en columna: no sargable, tiende a scan.
+Versión con rango directo: sargable, puede usar index seek.
+
+El resultado lógico se mantiene, pero el rendimiento puede cambiar muchísimo en tablas grandes.`);
+  }
+
+  if (!parts.length) {
+    parts.push('TODO: revisa el plan de ejecución real, las estadísticas y los índices disponibles antes de llevar la consulta a producción.');
+  }
+
+  return parts.join('\n\n');
+}
+
+function getDateCastInfo(sql) {
+  const castMatch = sql.match(/\bcast\s*\(\s*([\w.\[\]]+)\s+as\s+date\s*\)\s*(=|>=|>|<=|<)\s*(N?'[^']*'|@[\w]+)/i);
+  if (castMatch) return { column: castMatch[1], operator: castMatch[2], safeValue: toSafeSqlDateLiteral(castMatch[3]) };
+
+  const convertMatch = sql.match(/\bconvert\s*\(\s*date\s*,\s*([\w.\[\]]+)\s*\)\s*(=|>=|>|<=|<)\s*(N?'[^']*'|@[\w]+)/i);
+  if (convertMatch) return { column: convertMatch[1], operator: convertMatch[2], safeValue: toSafeSqlDateLiteral(convertMatch[3]) };
+
+  return null;
 }
 
 function severityLabel(severity) {
@@ -313,11 +437,7 @@ function escapeHtml(value) {
 
 function buildTextReport() {
   if (!currentReport) return 'No hay análisis todavía.';
-  const findings = currentReport.findings.map(item => (
-    `- [${severityLabel(item.severity)}] ${item.title}: ${item.explanation} Sugerencia: ${item.suggestion}`
-  )).join('\n') || '- Sin hallazgos.';
-
-  return `SQL Helper\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\nHallazgos:\n${findings}\n\nVersión sugerida:\n${currentReport.improved}`;
+  return `SQL Helper\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\n${currentReport.detailed}`;
 }
 
 async function copyText(text, button) {
@@ -372,7 +492,9 @@ summaryText.textContent = 'Ejecuta un análisis para ver el diagnóstico.';
 findingsList.textContent = 'Todavía no hay hallazgos.';
 findingCount.textContent = '0';
 improvedQuery.textContent = 'Sin sugerencia todavía.';
+detailedReport.textContent = 'Sin reporte todavía.';
 checklist.innerHTML = CHECKS.map(check => `<li><span>•</span><span>${escapeHtml(check)}</span></li>`).join('');
+currentReport = null;
 
 
 

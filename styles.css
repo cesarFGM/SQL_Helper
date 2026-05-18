@@ -273,7 +273,8 @@ button {
   font-weight: 700;
 }
 
-.query-preview {
+.query-preview,
+.report-preview {
   min-height: 130px;
   max-height: 280px;
   overflow: auto;
@@ -284,6 +285,14 @@ button {
   color: #f3f7f9;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.report-preview {
+  max-height: 420px;
+  background: #f8fbfd;
+  color: var(--text);
+  border: 1px solid var(--line);
+  line-height: 1.55;
 }
 
 .checklist {
