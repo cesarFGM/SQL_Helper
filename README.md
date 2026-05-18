@@ -1,4 +1,4 @@
-﻿# SQL Mentor
+﻿# SQL Helper
 
 Primera versión estática de un revisor de consultas T-SQL para SQL Server.
 
@@ -20,3 +20,4 @@ Abre `index.html` en el navegador.
 ## Próximo paso recomendado
 
 Cuando quieras convertirlo en versión con IA, agrega un backend seguro que reciba la consulta, llame a OpenAI con la API key en variables de entorno y devuelva el análisis estructurado al frontend.
+

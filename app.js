@@ -191,7 +191,11 @@ function buildImprovedQuery(sql, findings) {
     text = text.replace(/\bfrom\s+(?!\(|@|#|\w+\.)(\[?\w+\]?)/i, 'FROM dbo.$1');
   }
 
-  if (findings.some(item => item.id === 'no-semicolon')) {
+  if (findings.some(item => item.id === 'function-in-where')) {
+    text = suggestSargableFilters(text);
+  }
+
+  if (findings.some(item => item.id === 'no-semicolon') && !/;\s*(--[\s\S]*)?$/.test(text.trim())) {
     text += ';';
   }
 
@@ -201,6 +205,34 @@ function buildImprovedQuery(sql, findings) {
 
   if (findings.some(item => item.id === 'delete-without-where')) {
     text += '\n-- TODO: agrega una condición WHERE antes de ejecutar este DELETE.';
+  }
+
+  return text;
+}
+
+function suggestSargableFilters(sql) {
+  let text = sql;
+  let changed = false;
+
+  text = text.replace(/\b(upper|lower)\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*(N?'[^']*'|@[\w]+)/gi, (match, fn, column, value) => {
+    changed = true;
+    return `${column} = ${value} /* Revisa collation: reemplaza ${fn.toUpperCase()}(${column}) para permitir uso de índice. */`;
+  });
+
+  text = text.replace(/\byear\s*\(\s*([\w.\[\]]+)\s*\)\s*=\s*(\d{4})/gi, (match, column, year) => {
+    changed = true;
+    const nextYear = Number(year) + 1;
+    return `${column} >= '${year}-01-01' AND ${column} < '${nextYear}-01-01'`;
+  });
+
+  text = text.replace(/\bconvert\s*\(\s*date\s*,\s*([\w.\[\]]+)\s*\)\s*=\s*(N?'[^']*'|@[\w]+)/gi, (match, column, value) => {
+    changed = true;
+    return `${column} >= ${value} AND ${column} < DATEADD(day, 1, ${value})`;
+  });
+
+  if (!changed) {
+    text += '\n-- TODO: hay funciones en WHERE. Reescribe el filtro para comparar la columna directamente.';
+    text += "\n-- Ejemplo: YEAR(Fecha) = 2026 -> Fecha >= '2026-01-01' AND Fecha < '2027-01-01'.";
   }
 
   return text;
@@ -280,7 +312,7 @@ function buildTextReport() {
     `- [${severityLabel(item.severity)}] ${item.title}: ${item.explanation} Sugerencia: ${item.suggestion}`
   )).join('\n') || '- Sin hallazgos.';
 
-  return `SQL Mentor\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\nHallazgos:\n${findings}\n\nVersión sugerida:\n${currentReport.improved}`;
+  return `SQL Helper\nPuntuación: ${currentReport.score}/100\nResumen: ${currentReport.summary}\n\nHallazgos:\n${findings}\n\nVersión sugerida:\n${currentReport.improved}`;
 }
 
 async function copyText(text, button) {
@@ -336,5 +368,7 @@ findingsList.textContent = 'Todavía no hay hallazgos.';
 findingCount.textContent = '0';
 improvedQuery.textContent = 'Sin sugerencia todavía.';
 checklist.innerHTML = CHECKS.map(check => `<li><span>•</span><span>${escapeHtml(check)}</span></li>`).join('');
+
+
 
 
