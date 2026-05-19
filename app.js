@@ -358,6 +358,46 @@ function analyzeSql(sql, level) {
   return { score, findings, improved, summary, detailed, original: sql.trim() };
 }
 
+async function analyzeSqlPro(sql, level) {
+  try {
+    const response = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sql, feedbackLevel: level })
+    });
+
+    if (!response.ok) throw new Error(`Backend returned ${response.status}`);
+
+    const analysis = await response.json();
+    return normalizeRemoteReport(analysis, sql);
+  } catch (error) {
+    console.warn('AI backend unavailable, using local rules.', error);
+    const fallback = analyzeSql(sql, level);
+    fallback.summary = `${fallback.summary} Análisis local usado porque el backend IA no está disponible.`;
+    fallback.source = 'local';
+    return fallback;
+  }
+}
+
+function normalizeRemoteReport(analysis, sql) {
+  const findings = Array.isArray(analysis.findings) ? analysis.findings.map(item => ({
+    severity: ['critical', 'warning', 'suggestion'].includes(item.severity) ? item.severity : 'suggestion',
+    title: String(item.title || 'Hallazgo'),
+    explanation: String(item.explanation || ''),
+    suggestion: String(item.suggestion || '')
+  })) : [];
+
+  return {
+    score: Number.isFinite(Number(analysis.score)) ? Math.max(0, Math.min(100, Number(analysis.score))) : 70,
+    findings,
+    improved: String(analysis.suggestedQuery || sql.trim()),
+    summary: String(analysis.summary || 'Análisis completado.'),
+    detailed: String(analysis.dbaReport || 'No se generó reporte detallado.'),
+    original: sql.trim(),
+    source: analysis.source || 'ai'
+  };
+}
+
 function buildImprovedQuery(sql, findings) {
   let text = sql.trim();
   if (!text) return 'Pega una consulta para generar una versión sugerida.';
@@ -825,17 +865,31 @@ async function copyText(text, button) {
   }
 }
 
-analyzeButton.addEventListener('click', () => {
-  const report = analyzeSql(sqlInput.value, feedbackLevel.value);
+analyzeButton.addEventListener('click', async () => {
+  analyzeButton.disabled = true;
+  analyzeButton.textContent = 'Analizando...';
+  analysisStatus.textContent = 'Analizando';
+
+  const report = await analyzeSqlPro(sqlInput.value, feedbackLevel.value);
   renderReport(report);
+
+  analyzeButton.disabled = false;
+  analyzeButton.textContent = 'Analizar consulta';
 });
 
 sqlInput.addEventListener('input', autoGrowSqlInput);
 
-feedbackLevel.addEventListener('change', () => {
+feedbackLevel.addEventListener('change', async () => {
   if (!currentReport) return;
-  const report = analyzeSql(sqlInput.value, feedbackLevel.value);
+  analyzeButton.disabled = true;
+  analyzeButton.textContent = 'Analizando...';
+  analysisStatus.textContent = 'Analizando';
+
+  const report = await analyzeSqlPro(sqlInput.value, feedbackLevel.value);
   renderReport(report);
+
+  analyzeButton.disabled = false;
+  analyzeButton.textContent = 'Analizar consulta';
 });
 
 loadExampleButton.addEventListener('click', () => {

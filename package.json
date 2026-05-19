@@ -1,0 +1,17 @@
+﻿{
+  "name": "sql-helper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "check": "node --check app.js && node --check api/analyze.js"
+  },
+  "dependencies": {
+    "@vercel/node": "latest",
+    "openai": "latest"
+  },
+  "devDependencies": {
+    "vercel": "latest"
+  }
+}

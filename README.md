@@ -1,23 +1,63 @@
 ﻿# SQL Helper
 
-Primera versión estática de un revisor de consultas T-SQL para SQL Server.
+Revisor de consultas T-SQL para SQL Server.
 
-## Qué hace
+## Modo actual
 
-- Permite pegar una consulta SQL.
-- Analiza buenas prácticas con reglas locales.
-- Ofrece nivel de feedback: principiante, intermedio y avanzado.
-- Muestra puntuación general.
-- Lista hallazgos por severidad: crítico, advertencia y sugerencia.
-- Genera una versión sugerida básica.
-- Incluye checklist de revisión.
-- Permite copiar la consulta sugerida o el reporte completo.
+La app tiene dos modos:
 
-## Cómo abrirlo
+- **IA Pro**: usa `/api/analyze` con OpenAI desde un backend seguro en Vercel.
+- **Fallback local**: si el backend no está disponible, usa reglas locales en el navegador.
 
-Abre `index.html` en el navegador.
+## Archivos principales
 
-## Próximo paso recomendado
+- `index.html`: interfaz.
+- `styles.css`: estilos.
+- `app.js`: lógica del frontend y fallback local.
+- `api/analyze.js`: backend seguro para Vercel.
+- `package.json`: dependencias del proyecto.
 
-Cuando quieras convertirlo en versión con IA, agrega un backend seguro que reciba la consulta, llame a OpenAI con la API key en variables de entorno y devuelva el análisis estructurado al frontend.
+## Configurar IA
 
+Crea una API key en OpenAI Platform y configúrala como variable de entorno:
+
+```text
+OPENAI_API_KEY=tu_api_key
+```
+
+Opcionalmente puedes elegir modelo:
+
+```text
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+## Ejecutar local con Vercel
+
+Instala dependencias:
+
+```bash
+npm install
+```
+
+Ejecuta el servidor local:
+
+```bash
+npx vercel dev
+```
+
+Abre la URL que indique Vercel, normalmente:
+
+```text
+http://localhost:3000
+```
+
+## Desplegar
+
+1. Sube el proyecto a GitHub.
+2. Importa el repositorio en Vercel.
+3. Agrega `OPENAI_API_KEY` en Project Settings > Environment Variables.
+4. Despliega.
+
+## Seguridad
+
+La consulta no se ejecuta contra SQL Server. Solo se analiza texto. La API key vive en Vercel, no en el navegador.
